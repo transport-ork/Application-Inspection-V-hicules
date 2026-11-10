@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paris VIA - Contrôle & Départ Véhicule</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    :root {
+      --gold-primary: #b8923a;
+      --gold-light: #d4af37;
+      --bg-dark: #121212;
+      --card-bg: #1e1e1e;
+    }
+    body {
+      background-color: var(--bg-dark);
+      color: #e0e0e0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .gold-border { border-color: var(--gold-primary); }
+    .gold-text { color: var(--gold-primary); }
+    .gold-bg { background-color: var(--gold-primary); }
+    .gold-bg:hover { background-color: var(--gold-light); }
+    .card { background-color: var(--card-bg); border: 1px solid #333; }
+    canvas { touch-action: none; }
+  </style>
+</head>
+<body class="pb-12">
+
+  <!-- EN-TÊTE / LOGO PARIS VIA -->
+  <header class="bg-black py-6 border-b border-amber-600/30 text-center shadow-lg sticky top-0 z-50">
+    <div class="max-w-4xl mx-auto px-4 flex flex-col items-center justify-center">
+      <svg class="w-72 h-auto max-w-full" viewBox="0 0 450 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 75 35 L 330 35 C 375 35 410 40 425 65 C 430 75 425 90 425 90 L 400 90 C 400 90 395 72 380 62 C 365 52 320 52 320 52" stroke="#b8923a" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <text x="25" y="92" font-family="'Brush Script MT', 'Playfair Display', cursive, serif" font-size="68" fill="#b8923a" font-style="italic">paris</text>
+        <text x="205" y="90" font-family="'Montserrat', 'Arial Black', sans-serif" font-weight="900" font-size="52" fill="#b8923a">VI</text>
+        <path d="M 285 90 L 335 22 L 385 90 Z" fill="#b8923a"/>
+        <path d="M 315 90 L 335 45 L 355 90 Z" fill="#121212"/>
+        <rect x="330" y="68" width="10" height="10" fill="#b8923a"/>
+        <text x="235" y="122" font-family="'Montserrat', 'Helvetica', sans-serif" font-size="19" fill="#b8923a" letter-spacing="3">travel in elegance</text>
+      </svg>
+      <span class="text-xs uppercase tracking-widest text-amber-500/80 mt-1">Application Inspection Véhicules</span>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 mt-6">
+
+    <!-- BANNIÈRE DE VALIDATION OBLIGATOIRE -->
+    <div id="status-banner" class="card rounded-xl p-4 mb-6 border-2 border-red-500/50 bg-red-950/20">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+          <span>🛡️ Statut de Validation pour Démarrage Mission</span>
+        </h2>
+        <span id="completion-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-red-900/80 text-red-200">INCOMPLET</span>
+      </div>
+      
+      <div class="w-full bg-gray-800 rounded-full h-3 mb-3 overflow-hidden">
+        <div id="progress-bar" class="bg-red-500 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+
+      <div id="missing-alert" class="text-xs text-red-400 bg-red-900/30 p-3 rounded-lg border border-red-800/50">
+        <strong>⚠️ Démarrage mission bloqué !</strong><br>
+        <span id="missing-list">Éléments manquants : Nom du chauffeur, Immatriculation, Kilométrage, Tour Vidéo, Photos, Signature...</span>
+      </div>
+    </div>
+
+    <!-- ONGLETS -->
+    <div class="flex border-b border-gray-800 mb-6">
+      <button id="tab-form-btn" onclick="switchTab('form')" class="py-3 px-6 font-bold border-b-2 gold-border gold-text text-sm uppercase tracking-wider">
+        📋 Formulaire Obligatoire
+      </button>
+      <button id="tab-reports-btn" onclick="switchTab('reports')" class="py-3 px-6 font-bold border-b-2 border-transparent text-gray-400 hover:text-white text-sm uppercase tracking-wider">
+        📁 Rapports Enregistrés (<span id="reports-count">0</span>)
+      </button>
+    </div>
+
+    <!-- FORMULAIRE -->
+    <form id="inspection-form" oninput="validateFormProgress()" onchange="validateFormProgress()">
+      
+      <!-- SECTION 1: INFOS GÉNÉRALES -->
+      <section class="card rounded-xl p-5 mb-6">
+        <h3 class="text-lg font-bold gold-text mb-4 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full gold-bg text-black flex items-center justify-center text-xs font-bold">1</span>
+          Informations Générales *
+        </h3>
+
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-400 uppercase mb-2">Type d'état des lieux *</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button type="button" id="btn-depart" onclick="setTypeState('DEPART')" class="py-3 px-4 rounded-lg font-bold text-sm border-2 gold-border gold-bg text-black flex items-center justify-center gap-2">
+              🚌 DÉPART (Prise de service)
+            </button>
+            <button type="button" id="btn-retour" onclick="setTypeState('RETOUR')" class="py-3 px-4 rounded-lg font-bold text-sm border border-gray-700 bg-gray-800 text-gray-300 flex items-center justify-center gap-2">
+              🏢 RETOUR DÉPÔT (Fin de service)
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase mb-1">Nom & Prénom du Chauffeur *</label>
+            <input type="text" id="driver_name" required class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-amber-500 focus:outline-none" placeholder="Ex: Jean Dupont">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase mb-1">Type de Véhicule *</label>
+            <select id="vehicle_type" required class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-amber-500 focus:outline-none">
+              <option value="Van Sprinter Prestige">Van Sprinter Prestige</option>
+              <option value="Autocar Grand Tourisme">Autocar Grand Tourisme</option>
+              <option value="Minibus VIP">Minibus VIP</option>
+            </select>
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-xs font-semibold text-gray-400 uppercase mb-1">Immatriculation du Véhicule *</label>
+            <input type="text" id="plate_number" required class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white uppercase focus:border-amber-500 focus:outline-none" placeholder="EX: AA-123-BB">
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 2: COMPTEUR & NIVEAUX -->
+      <section class="card rounded-xl p-5 mb-6">
+        <h3 class="text-lg font-bold gold-text mb-4 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full gold-bg text-black flex items-center justify-center text-xs font-bold">2</span>
+          Relevés Compteur & Niveaux *
+        </h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase mb-1">Kilométrage Actuel (km) *</label>
+            <input type="number" id="mileage" required class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-amber-500 focus:outline-none" placeholder="Ex: 145200">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase mb-1">Niveau de Carburant * (<span id="fuel-val">100</span>%)</label>
+            <input type="range" id="fuel_level" min="0" max="100" value="100" oninput="document.getElementById('fuel-val').innerText = this.value" class="w-full accent-amber-500">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase mb-1">Niveau d'Huile Moteur *</label>
+            <select id="oil_level" required class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-amber-500 focus:outline-none">
+              <option value="OK (Niveau Optimal)">OK (Niveau Optimal)</option>
+              <option value="À compléter">À compléter</option>
+              <option value="CRITIQUE (Bas)">CRITIQUE (Bas)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase mb-1">Niveau AdBlue *</label>
+            <select id="adblue_level" required class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-amber-500 focus:outline-none">
+              <option value="Plein (OK)">Plein (OK)</option>
+              <option value="Moitié">Moitié</option>
+              <option value="Réserve (À faire)">Réserve (À faire)</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 3: PHOTOS OBLIGATOIRES -->
+      <section class="card rounded-xl p-5 mb-6">
+        <h3 class="text-lg font-bold gold-text mb-1 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full gold-bg text-black flex items-center justify-center text-xs font-bold">3</span>
+          Photos du Véhicule (4 Angles Obligatoires) *
+        </h3>
+        <p class="text-xs text-gray-400 mb-4">Prenez en photo les 4 faces principales du véhicule avant de démarrer.</p>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="border border-dashed border-gray-700 rounded-lg p-3 text-center bg-gray-900">
+            <label class="block text-xs font-bold mb-2">1. AVANT *</label>
+            <input type="file" id="photo_front" accept="image/*" capture="environment" onchange="previewImage(this, 'prev-front')" class="hidden">
+            <button type="button" onclick="document.getElementById('photo_front').click()" class="w-full py-2 bg-gray-800 border border-gray-600 rounded text-xs gold-text font-bold">📷 Prendre photo</button>
+            <img id="prev-front" class="mt-2 h-20 w-full object-cover rounded hidden">
+          </div>
+          <div class="border border-dashed border-gray-700 rounded-lg p-3 text-center bg-gray-900">
+            <label class="block text-xs font-bold mb-2">2. CÔTÉ GAUCHE *</label>
+            <input type="file" id="photo_left" accept="image/*" capture="environment" onchange="previewImage(this, 'prev-left')" class="hidden">
+            <button type="button" onclick="document.getElementById('photo_left').click()" class="w-full py-2 bg-gray-800 border border-gray-600 rounded text-xs gold-text font-bold">📷 Prendre photo</button>
+            <img id="prev-left" class="mt-2 h-20 w-full object-cover rounded hidden">
+          </div>
+          <div class="border border-dashed border-gray-700 rounded-lg p-3 text-center bg-gray-900">
+            <label class="block text-xs font-bold mb-2">3. CÔTÉ DROIT *</label>
+            <input type="file" id="photo_right" accept="image/*" capture="environment" onchange="previewImage(this, 'prev-right')" class="hidden">
+            <button type="button" onclick="document.getElementById('photo_right').click()" class="w-full py-2 bg-gray-800 border border-gray-600 rounded text-xs gold-text font-bold">📷 Prendre photo</button>
+            <img id="prev-right" class="mt-2 h-20 w-full object-cover rounded hidden">
+          </div>
+          <div class="border border-dashed border-gray-700 rounded-lg p-3 text-center bg-gray-900">
+            <label class="block text-xs font-bold mb-2">4. ARRIÈRE *</label>
+            <input type="file" id="photo_back" accept="image/*" capture="environment" onchange="previewImage(this, 'prev-back')" class="hidden">
+            <button type="button" onclick="document.getElementById('photo_back').click()" class="w-full py-2 bg-gray-800 border border-gray-600 rounded text-xs gold-text font-bold">📷 Prendre photo</button>
+            <img id="prev-back" class="mt-2 h-20 w-full object-cover rounded hidden">
+          </div>
+        </div>
+
+        <div class="mt-4 border border-dashed border-gray-700 rounded-lg p-3 bg-gray-900">
+          <label class="block text-xs font-bold mb-1">5. INTÉRIEUR / HABITACLE *</label>
+          <input type="file" id="photo_inside" accept="image/*" capture="environment" onchange="previewImage(this, 'prev-inside')" class="hidden">
+          <div class="flex items-center gap-4">
+            <button type="button" onclick="document.getElementById('photo_inside').click()" class="py-2 px-4 bg-gray-800 border border-gray-600 rounded text-xs gold-text font-bold">📷 Photo Intérieur</button>
+            <img id="prev-inside" class="h-16 w-24 object-cover rounded hidden">
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 4: TOUR VIDÉO & DÉGÂTS -->
+      <section class="card rounded-xl p-5 mb-6">
+        <h3 class="text-lg font-bold gold-text mb-2 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full gold-bg text-black flex items-center justify-center text-xs font-bold">4</span>
+          Tour Vidéo & Signalement de Casse / Rayures *
+        </h3>
+
+        <!-- VIDÉO -->
+        <div class="mb-5 border border-amber-600/40 bg-amber-950/10 rounded-lg p-4">
+          <label class="block text-xs font-bold uppercase gold-text mb-1">🎥 Vidéo Tour du Véhicule (15-30 sec) *</label>
+          <p class="text-xs text-gray-400 mb-3">Faites le tour complet du véhicule en filmant avec le téléphone.</p>
+          <input type="file" id="video_walkaround" accept="video/*" capture="environment" onchange="handleVideoUpload(this)" class="hidden">
+          <button type="button" onclick="document.getElementById('video_walkaround').click()" class="py-3 px-4 bg-amber-600 hover:bg-amber-500 text-black font-bold rounded-lg text-xs flex items-center gap-2">
+            📹 Enregistrer ou Importer la Vidéo *
+          </button>
+          <div id="video-status" class="mt-2 text-xs text-gray-400 italic">Aucune vidéo sélectionnée</div>
+        </div>
+
+        <!-- REMARQUES / ANOMALIES -->
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-400 uppercase mb-1">Description des parties cassées / rayures / dégâts *</label>
+          <textarea id="damages_description" rows="3" required class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-amber-500 focus:outline-none" placeholder="Décrivez précisément les dégâts existants. Si le véhicule est impeccable, cochez la case ci-dessous."></textarea>
+        </div>
+
+        <div class="flex items-center gap-2 bg-gray-900 p-3 rounded-lg border border-gray-800">
+          <input type="checkbox" id="no_damage_check" onchange="toggleNoDamage(this)" class="w-4 h-4 accent-amber-500">
+          <label for="no_damage_check" class="text-xs text-gray-300 font-semibold cursor-pointer">
+            ✅ Aucune casse / État irréprochable (Cocher si le véhicule n'a aucun choc)
+          </label>
+        </div>
+      </section>
+
+      <!-- SECTION 5: SIGNATURE & VALIDATION -->
+      <section class="card rounded-xl p-5 mb-6">
+        <h3 class="text-lg font-bold gold-text mb-2 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full gold-bg text-black flex items-center justify-center text-xs font-bold">5</span>
+          Signature Numérique du Chauffeur *
+        </h3>
+
+        <div class="mb-4">
+          <canvas id="signature-pad" class="w-full h-40 bg-gray-900 border border-gray-700 rounded-lg cursor-crosshair"></canvas>
+          <div class="flex justify-between items-center mt-2">
+            <span class="text-xs text-gray-500">Signez avec votre doigt ou la souris dans l'encadré</span>
+            <button type="button" onclick="clearSignature()" class="text-xs text-red-400 underline">Effacer la signature</button>
+          </div>
+        </div>
+
+        <!-- BOUTON DE SOUMISSION BLOQUANT -->
+        <button type="button" id="submit-btn" disabled onclick="submitForm()" class="w-full py-4 rounded-xl font-bold text-base uppercase tracking-wider bg-gray-800 text-gray-500 cursor-not-allowed transition-all shadow-lg flex items-center justify-center gap-2">
+          🔒 DÉMARRAGE BLOQUÉ (Complétez tous les champs)
+        </button>
+      </section>
+
+    </form>
+
+    <!-- SECTION RAPPORTS ENREGISTRÉS -->
+    <section id="reports-section" class="hidden">
+      <div class="card rounded-xl p-5">
+        <h3 class="text-lg font-bold gold-text mb-4">Historique des Inspections Effectuées</h3>
+        <div id="reports-list" class="space-y-4">
+          <p class="text-gray-500 text-sm">Aucune inspection enregistrée pour le moment.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    let currentState = 'DEPART';
+    let isSigned = false;
+    let imagesData = {};
+    let hasVideo = false;
+
+    // Initialisation Canvas Signature
+    const canvas = document.getElementById('signature-pad');
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      ctx.strokeStyle = '#b8923a';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+    }
+    window.addEventListener('resize', resizeCanvas);
+    setTimeout(resizeCanvas, 200);
+
+    function startDrawing(e) {
+      isDrawing = true;
+      draw(e);
+    }
+    function stopDrawing() {
+      if (isDrawing) {
+        isDrawing = false;
+        ctx.beginPath();
+        isSigned = true;
+        validateFormProgress();
+      }
+    }
+    function draw(e) {
+      if (!isDrawing) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX || e.touches[0].clientX) - rect.left;
+      const y = (e.clientY || e.touches[0].clientY) - rect.top;
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('touchstart', startDrawing);
+    canvas.addEventListener('touchend', stopDrawing);
+    canvas.addEventListener('touchmove', draw);
+
+    function clearSignature() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      isSigned = false;
+      validateFormProgress();
+    }
+
+    function setTypeState(type) {
+      currentState = type;
+      const btnDepart = document.getElementById('btn-depart');
+      const btnRetour = document.getElementById('btn-retour');
+      if (type === 'DEPART') {
+        btnDepart.className = "py-3 px-4 rounded-lg font-bold text-sm border-2 gold-border gold-bg text-black flex items-center justify-center gap-2";
+        btnRetour.className = "py-3 px-4 rounded-lg font-bold text-sm border border-gray-700 bg-gray-800 text-gray-300 flex items-center justify-center gap-2";
+      } else {
+        btnRetour.className = "py-3 px-4 rounded-lg font-bold text-sm border-2 gold-border gold-bg text-black flex items-center justify-center gap-2";
+        btnDepart.className = "py-3 px-4 rounded-lg font-bold text-sm border border-gray-700 bg-gray-800 text-gray-300 flex items-center justify-center gap-2";
+      }
+    }
+
+    function previewImage(input, previewId) {
+      if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = document.getElementById(previewId);
+          img.src = e.target.result;
+          img.classList.remove('hidden');
+          imagesData[previewId] = e.target.result;
+          validateFormProgress();
+        }
+        reader.readAsDataURL(input.files[0]);
+      }
+    }
+
+    function handleVideoUpload(input) {
+      if (input.files && input.files[0]) {
+        hasVideo = true;
+        document.getElementById('video-status').innerText = "✅ Vidéo enregistrée : " + input.files[0].name;
+        document.getElementById('video-status').className = "mt-2 text-xs text-green-400 font-bold";
+        validateFormProgress();
+      }
+    }
+
+    function toggleNoDamage(checkbox) {
+      const textarea = document.getElementById('damages_description');
+      if (checkbox.checked) {
+        textarea.value = "Aucune casse. État irréprochable constaté lors du tour du véhicule.";
+      } else {
+        textarea.value = "";
+      }
+      validateFormProgress();
+    }
+
+    function validateFormProgress() {
+      const missing = [];
+      
+      const driver = document.getElementById('driver_name').value.trim();
+      const plate = document.getElementById('plate_number').value.trim();
+      const mileage = document.getElementById('mileage').value.trim();
+      const damages = document.getElementById('damages_description').value.trim();
+
+      if (!driver) missing.push("Nom du Chauffeur");
+      if (!plate) missing.push("Immatriculation");
+      if (!mileage) missing.push("Kilométrage");
+      if (!damages) missing.push("Remarques / État anomalies");
+
+      if (!imagesData['prev-front']) missing.push("Photo Avant");
+      if (!imagesData['prev-left']) missing.push("Photo Côté Gauche");
+      if (!imagesData['prev-right']) missing.push("Photo Côté Droit");
+      if (!imagesData['prev-back']) missing.push("Photo Arrière");
+      if (!imagesData['prev-inside']) missing.push("Photo Intérieur");
+      if (!hasVideo) missing.push("Tour Vidéo du véhicule");
+      if (!isSigned) missing.push("Signature du Chauffeur");
+
+      const totalSteps = 11;
+      const completedSteps = totalSteps - missing.length;
+      const progressPercent = Math.round((completedSteps / totalSteps) * 100);
+
+      const progressBar = document.getElementById('progress-bar');
+      const badge = document.getElementById('completion-badge');
+      const alertBox = document.getElementById('missing-alert');
+      const missingList = document.getElementById('missing-list');
+      const submitBtn = document.getElementById('submit-btn');
+
+      progressBar.style.width = progressPercent + "%";
+
+      if (missing.length === 0) {
+        badge.innerText = "100% - CONFORME";
+        badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-green-900 text-green-200";
+        progressBar.className = "bg-green-500 h-3 rounded-full transition-all duration-300";
+        alertBox.className = "text-xs text-green-400 bg-green-950/40 p-3 rounded-lg border border-green-800/50";
+        missingList.innerHTML = "<strong>✅ Contrôle complet validé.</strong> Le véhicule est autorisé à démarrer la mission.";
+        
+        submitBtn.disabled = false;
+        submitBtn.className = "w-full py-4 rounded-xl font-bold text-base uppercase tracking-wider gold-bg text-black hover:bg-amber-400 cursor-pointer transition-all shadow-xl flex items-center justify-center gap-2";
+        submitBtn.innerHTML = "🚀 VALIDER ET DÉMARRER LA MISSION";
+      } else {
+        badge.innerText = progressPercent + "% - INCOMPLET";
+        badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-red-900/80 text-red-200";
+        progressBar.className = "bg-red-500 h-3 rounded-full transition-all duration-300";
+        alertBox.className = "text-xs text-red-400 bg-red-950/20 p-3 rounded-lg border border-red-800/50";
+        missingList.innerHTML = "<strong>Éléments manquants obligatoires :</strong> " + missing.join(", ") + ".";
+
+        submitBtn.disabled = true;
+        submitBtn.className = "w-full py-4 rounded-xl font-bold text-base uppercase tracking-wider bg-gray-800 text-gray-500 cursor-not-allowed transition-all shadow-lg flex items-center justify-center gap-2";
+        submitBtn.innerHTML = "🔒 DÉMARRAGE BLOQUÉ (Complétez les éléments ci-dessus)";
+      }
+    }
+
+    function submitForm() {
+      const report = {
+        id: Date.now(),
+        date: new Date().toLocaleString('fr-FR'),
+        type: currentState,
+        driver: document.getElementById('driver_name').value,
+        vehicle: document.getElementById('vehicle_type').value,
+        plate: document.getElementById('plate_number').value.toUpperCase(),
+        mileage: document.getElementById('mileage').value,
+        fuel: document.getElementById('fuel_level').value,
+        oil: document.getElementById('oil_level').value,
+        adblue: document.getElementById('adblue_level').value,
+        damages: document.getElementById('damages_description').value,
+        signature: canvas.toDataURL(),
+        images: { ...imagesData }
+      };
+
+      let reports = JSON.parse(localStorage.getItem('paris_via_reports') || '[]');
+      reports.unshift(report);
+      localStorage.getItem('paris_via_reports', JSON.stringify(reports));
+
+      generatePDF(report);
+      alert("✅ Fiche d'inspection enregistrée avec succès ! Génération du PDF en cours...");
+      loadReports();
+    }
+
+    function generatePDF(report) {
+      const element = document.createElement('div');
+      element.className = "p-6 bg-white text-black font-sans";
+      element.innerHTML = `
+        <div style="text-align: center; border-bottom: 2px solid #b8923a; padding-bottom: 15px; margin-bottom: 20px;">
+          <h1 style="color: #b8923a; font-size: 24px; font-weight: bold; margin: 0;">PARIS VIA - FICHE D'INSPECTION</h1>
+          <p style="font-size: 12px; color: #555; margin-top: 5px;">${report.type} - ${report.date}</p>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">
+          <tr><td style="padding: 5px; font-weight: bold;">Chauffeur:</td><td>${report.driver}</td><td style="padding: 5px; font-weight: bold;">Véhicule:</td><td>${report.vehicle}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Immatriculation:</td><td>${report.plate}</td><td style="padding: 5px; font-weight: bold;">Kilométrage:</td><td>${report.mileage} km</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Carburant:</td><td>${report.fuel}%</td><td style="padding: 5px; font-weight: bold;">AdBlue:</td><td>${report.adblue}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Huile Moteur:</td><td>${report.oil}</td><td style="padding: 5px; font-weight: bold;">Vidéo:</td><td>Effectuée (Validée)</td></tr>
+        </table>
+        <div style="margin-bottom: 20px;">
+          <h3 style="font-size: 14px; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 3px;">État du Véhicule / Remarques :</h3>
+          <p style="font-size: 11px; background: #f9f9f9; padding: 10px; border: 1px solid #eee; margin-top: 5px;">${report.damages}</p>
+        </div>
+        <div style="margin-top: 30px; text-align: right;">
+          <p style="font-size: 11px; font-weight: bold;">Signature du Chauffeur :</p>
+          <img src="${report.signature}" style="max-height: 60px; display: inline-block; border: 1px solid #ddd; margin-top: 5px;">
+        </div>
+      `;
+
+      const opt = {
+        margin: 10,
+        filename: `Inspection_${report.plate}_${report.driver.replace(/\s+/g, '_')}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      html2pdf().set(opt).from(element).save();
+    }
+
+    function switchTab(tab) {
+      if (tab === 'form') {
+        document.getElementById('inspection-form').classList.remove('hidden');
+        document.getElementById('reports-section').classList.add('hidden');
+        document.getElementById('tab-form-btn').className = "py-3 px-6 font-bold border-b-2 gold-border gold-text text-sm uppercase tracking-wider";
+        document.getElementById('tab-reports-btn').className = "py-3 px-6 font-bold border-b-2 border-transparent text-gray-400 hover:text-white text-sm uppercase tracking-wider";
+      } else {
+        document.getElementById('inspection-form').classList.add('hidden');
+        document.getElementById('reports-section').classList.remove('hidden');
+        document.getElementById('tab-reports-btn').className = "py-3 px-6 font-bold border-b-2 gold-border gold-text text-sm uppercase tracking-wider";
+        document.getElementById('tab-form-btn').className = "py-3 px-6 font-bold border-b-2 border-transparent text-gray-400 hover:text-white text-sm uppercase tracking-wider";
+      }
+    }
+
+    function loadReports() {
+      let reports = JSON.parse(localStorage.getItem('paris_via_reports') || '[]');
+      document.getElementById('reports-count').innerText = reports.length;
+      const list = document.getElementById('reports-list');
+      
+      if (reports.length === 0) {
+        list.innerHTML = `<p class="text-gray-500 text-sm">Aucune inspection enregistrée pour le moment.</p>`;
+        return;
+      }
+
+      list.innerHTML = reports.map(r => `
+        <div class="border border-gray-800 bg-gray-900 rounded-lg p-4 flex justify-between items-center">
+          <div>
+            <span class="text-xs font-bold ${r.type === 'DEPART' ? 'text-amber-400' : 'text-blue-400'}">${r.type}</span>
+            <h4 class="font-bold text-white text-sm">${r.driver} - ${r.plate} (${r.vehicle})</h4>
+            <p class="text-xs text-gray-400">${r.date} | ${r.mileage} km | Carburant ${r.fuel}%</p>
+          </div>
+          <button onclick='generatePDF(${JSON.stringify(r)})' class="py-2 px-3 bg-gray-800 border border-amber-600/50 gold-text rounded text-xs font-bold hover:bg-amber-600 hover:text-black">
+            📄 Télécharger PDF
+          </button>
+        </div>
+      `).join('');
+    }
+
+    // Chargement initial
+    validateFormProgress();
+    loadReports();
+  </script>
+</body>
+</html>
